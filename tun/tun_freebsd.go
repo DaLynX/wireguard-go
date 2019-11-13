@@ -252,15 +252,17 @@ func CreateTUN(name string, mtu int) (Device, error) {
 	}
 
 	// See if interface already exists
-	iface, _ := net.InterfaceByName(name)
-	if iface != nil {
-		return nil, fmt.Errorf("interface %s already exists", name)
-	}
+	//iface, _ := net.InterfaceByName(name)
+	//if iface != nil {
+	//	return nil, fmt.Errorf("interface %s already exists", name)
+	//}
 
-	tunFile, err := os.OpenFile("/dev/tun", unix.O_RDWR, 0)
+    fmt.Println("Opening device:", name)
+	tunFile, err := os.OpenFile("/dev/"+name, unix.O_RDWR, 0)
 	if err != nil {
 		return nil, err
 	}
+    fmt.Println("Device", name, "opened")
 
 	tun := NativeTun{tunFile: tunFile}
 	var assignedName string
@@ -271,6 +273,7 @@ func CreateTUN(name string, mtu int) (Device, error) {
 		tunFile.Close()
 		return nil, err
 	}
+    fmt.Println("Made NativeTun")
 
 	// Enable ifhead mode, otherwise tun will complain if it gets a non-AF_INET packet
 	ifheadmode := 1
@@ -283,6 +286,7 @@ func CreateTUN(name string, mtu int) (Device, error) {
 			uintptr(unsafe.Pointer(&ifheadmode)),
 		)
 	})
+    fmt.Println("Called operateOnFd")
 
 	if errno != 0 {
 		tunFile.Close()
@@ -290,6 +294,9 @@ func CreateTUN(name string, mtu int) (Device, error) {
 		return nil, fmt.Errorf("Unable to put into IFHEAD mode: %v", errno)
 	}
 
+    fmt.Println("Now opening sockets...")
+
+    fmt.Println("ipv4")
 	// Open control sockets
 	confd, err := unix.Socket(
 		unix.AF_INET,
@@ -302,65 +309,71 @@ func CreateTUN(name string, mtu int) (Device, error) {
 		return nil, err
 	}
 	defer unix.Close(confd)
-	confd6, err := unix.Socket(
-		unix.AF_INET6,
-		unix.SOCK_DGRAM,
-		0,
-	)
-	if err != nil {
-		tunFile.Close()
-		tunDestroy(assignedName)
-		return nil, err
-	}
-	defer unix.Close(confd6)
+    fmt.Println("done")
+    fmt.Println("ipv6")
+	//confd6, err := unix.Socket(
+	//	unix.AF_INET6,
+	//	unix.SOCK_DGRAM,
+	//	0,
+	//)
+	//if err != nil {
+	//	tunFile.Close()
+	//	tunDestroy(assignedName)
+	//	return nil, err
+	//}
+	//defer unix.Close(confd6)
+    fmt.Println("done")
 
+    fmt.Println("Disabling v6")
 	// Disable link-local v6, not just because WireGuard doesn't do that anyway, but
 	// also because there are serious races with attaching and detaching LLv6 addresses
 	// in relation to interface lifetime within the FreeBSD kernel.
-	var ndireq in6_ndireq
-	copy(ndireq.Name[:], assignedName)
-	_, _, errno = unix.Syscall(
-		unix.SYS_IOCTL,
-		uintptr(confd6),
-		uintptr(SIOCGIFINFO_IN6),
-		uintptr(unsafe.Pointer(&ndireq)),
-	)
-	if errno != 0 {
-		tunFile.Close()
-		tunDestroy(assignedName)
-		return nil, fmt.Errorf("Unable to get nd6 flags for %s: %v", assignedName, errno)
-	}
-	ndireq.Flags = ndireq.Flags &^ ND6_IFF_AUTO_LINKLOCAL
-	ndireq.Flags = ndireq.Flags | ND6_IFF_NO_DAD
-	_, _, errno = unix.Syscall(
-		unix.SYS_IOCTL,
-		uintptr(confd6),
-		uintptr(SIOCSIFINFO_IN6),
-		uintptr(unsafe.Pointer(&ndireq)),
-	)
-	if errno != 0 {
-		tunFile.Close()
-		tunDestroy(assignedName)
-		return nil, fmt.Errorf("Unable to set nd6 flags for %s: %v", assignedName, errno)
-	}
+	//var ndireq in6_ndireq
+	//copy(ndireq.Name[:], assignedName)
+	//_, _, errno = unix.Syscall(
+	//	unix.SYS_IOCTL,
+	//	uintptr(confd6),
+	//	uintptr(SIOCGIFINFO_IN6),
+	//	uintptr(unsafe.Pointer(&ndireq)),
+	//)
+	//if errno != 0 {
+	//	tunFile.Close()
+	//	tunDestroy(assignedName)
+	//	return nil, fmt.Errorf("Unable to get nd6 flags for %s: %v", assignedName, errno)
+	//}
+	//ndireq.Flags = ndireq.Flags &^ ND6_IFF_AUTO_LINKLOCAL
+	//ndireq.Flags = ndireq.Flags | ND6_IFF_NO_DAD
+	//_, _, errno = unix.Syscall(
+	//	unix.SYS_IOCTL,
+	//	uintptr(confd6),
+	//	uintptr(SIOCSIFINFO_IN6),
+	//	uintptr(unsafe.Pointer(&ndireq)),
+	//)
+	//if errno != 0 {
+	//	tunFile.Close()
+	//	tunDestroy(assignedName)
+	//	return nil, fmt.Errorf("Unable to set nd6 flags for %s: %v", assignedName, errno)
+	//}
 
 	// Rename the interface
-	var newnp [unix.IFNAMSIZ]byte
-	copy(newnp[:], name)
-	var ifr ifreq_ptr
-	copy(ifr.Name[:], assignedName)
-	ifr.Data = uintptr(unsafe.Pointer(&newnp[0]))
-	_, _, errno = unix.Syscall(
-		unix.SYS_IOCTL,
-		uintptr(confd),
-		uintptr(unix.SIOCSIFNAME),
-		uintptr(unsafe.Pointer(&ifr)),
-	)
-	if errno != 0 {
-		tunFile.Close()
-		tunDestroy(assignedName)
-		return nil, fmt.Errorf("Failed to rename %s to %s: %v", assignedName, name, errno)
-	}
+	//var newnp [unix.IFNAMSIZ]byte
+	//copy(newnp[:], name)
+	//var ifr ifreq_ptr
+	//copy(ifr.Name[:], assignedName)
+	//ifr.Data = uintptr(unsafe.Pointer(&newnp[0]))
+	//_, _, errno = unix.Syscall(
+	//	unix.SYS_IOCTL,
+	//	uintptr(confd),
+	//	uintptr(unix.SIOCSIFNAME),
+	//	uintptr(unsafe.Pointer(&ifr)),
+	//)
+	//if errno != 0 {
+	//	tunFile.Close()
+	//	tunDestroy(assignedName)
+	//	return nil, fmt.Errorf("Failed to rename %s to %s: %v", assignedName, name, errno)
+	//}
+
+    fmt.Println("Calling CreateTUNFromFile...")
 
 	return CreateTUNFromFile(tunFile, mtu)
 }
@@ -399,11 +412,11 @@ func CreateTUNFromFile(file *os.File, mtu int) (Device, error) {
 
 	go tun.routineRouteListener(tunIfindex)
 
-	err = tun.setMTU(mtu)
-	if err != nil {
-		tun.Close()
-		return nil, err
-	}
+	//err = tun.setMTU(mtu)
+	//if err != nil {
+	//	tun.Close()
+	//	return nil, err
+	//}
 
 	return tun, nil
 }
